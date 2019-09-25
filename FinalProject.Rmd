@@ -1,0 +1,354 @@
+---
+title: "R Notebook"
+author: "Sami Ranjan Shekhar"
+date: "April 12, 2018"
+output:
+  html_document:
+    df_print: paged
+---
+
+This is an [R Markdown](http://rmarkdown.rstudio.com) Notebook. When you execute code within the notebook, the results appear beneath the code. 
+
+Try executing this chunk by clicking the *Run* button within the chunk or by placing your cursor inside it and pressing *Ctrl+Shift+Enter*. 
+
+```{r}
+#Acquisition of the data 
+adult <- read.table('https://archive.ics.uci.edu/ml/machine-learning-databases/adult/adult.data', 
+                    sep = ',', fill = F, strip.white = T)
+
+
+#Adding column headers to the data frame 
+colnames(adult) <- c('age', 'workclass', 'fnlwgt', 'education', 
+                     'education_num', 'marital_status', 'occupation', 'relationship', 'race', 'sex', 
+                     'capital_gain', 'capital_loss', 'hours_per_week', 'native_country', 'income')
+
+#To observe columns with datatypes and total number of observations in data set
+str(adult)
+head(adult)
+tail(adult)
+summary(adult)
+
+#To check if there are any NA/ Missing values. 
+Na<- colSums(is.na(adult[,]))
+Na
+#It is observed that there are no missing values so no need of data imputation.
+#As almost all of the variables are categorical and their is no anamoly among them so their are no outliers in the dataset.
+
+
+#For simplicity of the analysis we will discard the weighting factor.Relationship can be determined by gender and marital status and total number of years of education can  represent the highest education completed.
+adult$fnlwgt <- NULL
+adult$relationship <- NULL
+adult$education <- NULL
+summary(adult)
+
+#Check for correlation and collinearity among variables
+library(psych)
+pairs.panels(adult)
+#As we can see there is no strong correlation among them and are not collinear.
+
+#Visualizing the variables with the target variable
+#First variable being age 
+#Histogram plot of age by income group
+library(ggplot2)
+ggplot(adult) + aes(x=as.numeric(age), group=income, fill=income) + 
+  geom_histogram(binwidth=1, color='blue')
+#Histogram plot of age by gender group
+ggplot(adult) + aes(x=as.numeric(age), group=sex, fill=sex) + 
+  geom_histogram(binwidth=1, color='blue')
+#As we can see majority make less than $50000 a year and females are less represented.Those who make $50000 are in middle phase of their career.
+
+#Second variable being education_num
+ut <- data.frame(table(adult$income, adult$education_num))
+names(ut) <- c('income', 'education_num', 'count')
+ut
+library(plyr)
+ut <- ddply(ut, .(education_num), transform, percent = count/sum(count) * 100)
+ut <- ddply(ut, .(education_num), transform, pos = (cumsum(count) - 0.5 * count))
+ut$label <- paste0(sprintf("%.0f", ut$percent), "%")
+ggplot(ut, aes(x = education_num, y = count, fill = income)) +geom_bar(stat = "identity") +geom_text(aes(y = pos, label = label), size = 2) + ggtitle('Income Level with Years of Education')
+# As we can easily notice that if the number of education years increases then making greater than $50000 increases.
+
+#Third variable being workclass
+summary(adult$workclass)
+#For simplicity purpose we will combine question mark with never worked and without-pay into Other/Unknown.
+levels(adult$workclass)[1] <- 'Unknown'
+adult$workclass <- gsub('^Never-worked', 'Other', adult$workclass)
+adult$workclass <- gsub('^Without-pay', 'Other', adult$workclass)
+adult$workclass <- gsub('^Other', 'Other/Unknown', adult$workclass)
+adult$workclass <- gsub('^Unknown', 'Other/Unknown', adult$workclass)
+#Combining federal ,local and state into government
+adult$workclass <- gsub('^Federal-gov', 'Government', adult$workclass)
+adult$workclass <- gsub('^Local-gov', 'Government', adult$workclass)
+adult$workclass <- gsub('^State-gov', 'Government', adult$workclass)
+#Combining into self employed job
+adult$workclass <- gsub('^Self-emp-inc', 'Self-Employed', adult$workclass)
+adult$workclass <- gsub('^Self-emp-not-inc', 'Self-Employed', adult$workclass)
+adult$workclass <- as.factor(adult$workclass)
+summary(adult$workclass)
+#Now the variable workclass has been combined into four categories
+#Getting the counts of categories of workclass by income and then represented as bar plot
+count <- table(adult[adult$workclass == 'Government',]$income)["<=50K"]
+count <- c(count, table(adult[adult$workclass == 'Government',]$income)[">50K"])
+count <- c(count, table(adult[adult$workclass == 'Other/Unknown',]$income)["<=50K"])
+count <- c(count, table(adult[adult$workclass == 'Other/Unknown',]$income)[">50K"])
+count <- c(count, table(adult[adult$workclass == 'Private',]$income)["<=50K"])
+count <- c(count, table(adult[adult$workclass == 'Private',]$income)[">50K"])
+count <- c(count, table(adult[adult$workclass == 'Self-Employed',]$income)["<=50K"])
+count <- c(count, table(adult[adult$workclass == 'Self-Employed',]$income)[">50K"])
+count <- as.numeric(count)
+
+#Creating a dataframe
+workclasscategory <- rep(levels(adult$workclass), each = 2)
+income <- rep(c('<=50K', '>50K'), 4)
+ut1 <- data.frame(workclasscategory, income, count)
+ut1
+
+#Barplot
+ut1<- ddply(ut1, .(workclasscategory), transform, percent = count/sum(count) * 100)
+ut1 <- ddply(ut1, .(workclasscategory), transform, pos = (cumsum(count) - 0.5 * count))
+ut1$label <- paste0(sprintf("%.0f", ut1$percent), "%")
+ggplot(ut1, aes(x = workclasscategory , y = count, fill = income)) +geom_bar(stat = "identity") +geom_text(aes(y = pos,label = label), size = 2) + ggtitle('Income by workclasscategory')
+#As we can see those who are self employed have high tendency of earning more than $50000 a year
+
+#Fourth variable is Maritial Status
+#For simplicity purpose various categories of maritial status is combined into 5 features i.e Single, Married,Divorced,Separated,Widowed
+summary(adult$marital_status)
+adult$marital_status <- gsub('Married-AF-spouse', 'Married', adult$marital_status)
+adult$marital_status <- gsub('Married-civ-spouse', 'Married', adult$marital_status)
+adult$marital_status <- gsub('Married-spouse-absent', 'Married', adult$marital_status)
+adult$marital_status <- gsub('Never-married', 'Single', adult$marital_status)
+adult$marital_status <- as.factor(adult$marital_status)
+summary(adult$marital_status)
+
+#Creating a dataframe
+ut2 <- data.frame(table(adult$income, adult$marital_status))
+names(ut2) <- c('income', 'marital_status', 'count')
+ut2
+
+#Barplot
+ut2 <- ddply(ut2, .(marital_status), transform, percent = count/sum(count) * 100)
+ut2 <- ddply(ut2, .(marital_status), transform, pos = (cumsum(count) - 0.5 * count))
+ut2$label <- paste0(sprintf("%.0f", ut2$percent), "%")
+ggplot(ut2, aes(x = marital_status, y = count, fill = income)) +geom_bar(stat = "identity") +geom_text(aes(y = pos, label = label), size = 2) + ggtitle('Income Level with Marital Status')
+
+
+#Fifth variable is Occupation
+#Occupation also has a lot of features and it is combined into few i.e Blue Collar, Other/Unknown, Professional,Sales, Service,White Collar
+summary(adult$occupation)
+levels(adult$occupation)[1] <- 'Unknown'
+adult$occupation <- gsub('Adm-clerical', 'White-Collar', adult$occupation)
+adult$occupation <- gsub('Craft-repair', 'Blue-Collar', adult$occupation)
+adult$occupation <- gsub('Exec-managerial', 'White-Collar', adult$occupation)
+adult$occupation <- gsub('Farming-fishing', 'Blue-Collar', adult$occupation)
+adult$occupation <- gsub('Handlers-cleaners', 'Blue-Collar', adult$occupation)
+adult$occupation <- gsub('Machine-op-inspct', 'Blue-Collar', adult$occupation)
+adult$occupation <- gsub('Other-service', 'Service', adult$occupation)
+adult$occupation <- gsub('Priv-house-serv', 'Service', adult$occupation)
+adult$occupation <- gsub('Prof-specialty', 'Professional', adult$occupation)
+adult$occupation <- gsub('Protective-serv', 'Service', adult$occupation)
+adult$occupation <- gsub('Tech-support', 'Service', adult$occupation)
+adult$occupation <- gsub('Transport-moving', 'Blue-Collar', adult$occupation)
+adult$occupation <- gsub('Unknown', 'Other/Unknown', adult$occupation)
+adult$occupation <- gsub('Armed-Forces', 'Other/Unknown', adult$occupation)
+adult$occupation <- as.factor(adult$occupation)
+summary(adult$occupation)
+
+#Creating a datframe
+ut3 <- data.frame(table(adult$income, adult$occupation))
+names(ut3) <- c('income', 'occupation', 'count')
+ut3
+
+#Barplot
+ut3 <- ddply(ut3, .(occupation), transform, percent = count/sum(count) * 100)
+ut3 <- ddply(ut3, .(occupation), transform, pos = (cumsum(count) - 0.5 * count))
+ut3$label <- paste0(sprintf("%.0f", ut3$percent), "%")
+ggplot(ut3, aes(x = occupation, y = count, fill = income)) +
+  geom_bar(stat = "identity") +
+  geom_text(aes(y = pos, label = label), size = 2) + 
+  ggtitle('Income Level with Different Occupations')
+#As we can see income varies a lot among different occupations
+
+
+#Next variables being Capital Gain and Capital Loss
+#Histogram plot of Capital gain
+ggplot(adult) + aes(x=as.numeric(capital_gain), group=income, fill=income) + 
+  geom_histogram(bins=15, color='blue') + ggtitle('Histogram of Capital Gain')
+#Histogram Plot of Capital Loss
+ggplot(adult) + aes(x=as.numeric(capital_loss), group=income, fill=income) + 
+  geom_histogram(bins=15, color='blue') + ggtitle('Histogram of Capital Loss')
+
+#Capital gain and loss histograms show that they are highly skewed so we can neglect these variables.
+
+#Next Variable being Native country
+ggplot(adult) + aes(x=as.numeric(native_country), group=income, fill=income) + 
+  geom_histogram(bins=15, color='blue') + ggtitle('Histogram of Native Country')
+#Plot shows this is also very skewed so we neglect this also .
+adult$capital_gain <- NULL
+adult$capital_loss <- NULL
+adult$native_country <- NULL
+
+#Race is the next variable
+ut4 <- data.frame(table(adult$income, adult$race))
+names(ut4) <- c('income', 'race', 'count')
+ut4
+
+ut4 <- ddply(ut4, .(race), transform, percent = count/sum(count) * 100)
+ut4 <- ddply(ut4, .(race), transform, pos = (cumsum(count) - 0.5 * count))
+ut4$label <- paste0(sprintf("%.0f", ut4$percent), "%")
+ggplot(ut4, aes(x = race, y = count, fill = income)) +
+  geom_bar(stat = "identity") +
+  geom_text(aes(y = pos, label = label), size = 2) + 
+  ggtitle('Income Level by Race')
+
+str(adult)
+summary(adult)
+head(adult)
+tail(adult)
+#So now we have have 9 variables left in which 8 will be predictors and income as the response variable.
+
+#Creating test and train dataset and building models
+utk <- round(0.75 * dim(adult)[1])  
+training_data <- adult[1:utk,]
+training_data
+testing_data <- adult[-(1:utk),]
+testing_data
+
+#Logistic Regression Model
+lr <- glm(income ~ ., data = training_data, family = binomial('logit'))
+summary(lr)
+confint(lr)
+plot(lr)
+
+#Forward and Backward selection 
+lr_full <- lr  
+lr_null <- glm(income ~ 1, data = training_data, family = binomial('logit'))
+#Backward selection
+step(lr_full, trace = F, scope = list(lower=formula(lr_null), upper=formula(lr_full)),
+     direction = 'backward')
+#Forward selection
+step(lr_null, trace = F, scope = list(lower=formula(lr_null), upper=formula(lr_full)),
+     direction = 'forward')
+#Both the forward and backward stepwise selection algorithms give the same model as the initial fit.So the original model is best fit
+
+#Logistic regression is modeling the probability that an individual makes more than $50,000 annually. In other word, a response closer to 1 indicates higher chance of making over $50,000, while a response closer to 0 indicates a higher chance of making less than $50,000. Thus, a threshold of 0.5 is used to determine whether an individual is predicted to make more than $50,000 annually or not
+library(caret)
+prob <- predict(lr, testing_data, type = 'response')
+pred <- rep('<=50K', length(prob))
+pred[prob>=.5] <- '>50K'
+confusionMatrix_lr<- confusionMatrix(pred,testing_data$income)
+confusionMatrix_lr
+
+
+#SVM Model
+set.seed(2799)
+utk <- round(0.75 * dim(adult)[1])  
+training_data <- adult[1:utk,]
+testing_data <- adult[-(1:utk),]
+
+library(kernlab)
+svm1 <- ksvm(income ~ ., data = training_data,kernel = "vanilladot")
+svm1
+svmpred_prob <- predict(svm1, newdata = testing_data, type = 'decision')
+svm_pred <- predict(svm1, newdata = testing_data, type = 'response')
+confusionMatrix_svm<- confusionMatrix(svm_pred,testing_data$income)
+confusionMatrix_svm
+#Svm model has an accuracy of 82.67 and  kappa value of 0.4931.
+
+#Model performance improvement
+#We use the Gaussian RBF kernel,and train the RBF-based SVM making use of the ksvm() function 
+
+svm1_rbf <- ksvm(income ~ ., data = training_data,kernel = "rbfdot")
+svm1_rbf
+svmpred_prob1 <- predict(svm1_rbf, newdata = testing_data, type = 'decision')
+svm_pred1 <- predict(svm1_rbf, newdata = testing_data, type = 'response')
+confusionMatrix_svm1<- confusionMatrix(svm_pred1,testing_data$income)
+confusionMatrix_svm1
+
+#After the model improvement the accuracy is 83.01.
+
+#Neural Network
+utk <- round(0.75 * dim(adult)[1])  
+training_data <- adult[1:utk,]
+testing_data <- adult[-(1:utk),]
+library(nnet)
+nn1 <- nnet(income ~ ., data = training_data, size = 10, maxit = 500)
+nn1.pred <- predict(nn1, newdata = testing_data, type = 'raw')
+pred1 <- rep('<=50K', length(nn1.pred))
+pred1[nn1.pred>=.5] <- '>50K'
+confusionMatrix_nn<- confusionMatrix(pred1,testing_data$income)
+confusionMatrix_nn
+#Accuracy of the model is 82.36
+
+#Model Performance Improvement 
+#Increasing the number of hidden nodes to 45.
+nn2 <- nnet(income ~ ., data = training_data, size = 45, maxit = 500)
+nn2.pred <- predict(nn2, newdata = testing_data, type = 'raw')
+pred1 <- rep('<=50K', length(nn1.pred))
+pred1[nn2.pred>=.5] <- '>50K'
+confusionMatrix_nn2<- confusionMatrix(pred1,testing_data$income)
+confusionMatrix_nn2
+#Accuracy of the model is 82.70
+
+#Comparison of models
+#ROC curve is a plot of true positive rate against false positive rate under all threshold values.The three different models are compared using ROC curve
+
+#Creating a prediction object
+library(ROCR)
+pr <- prediction(prob, testing_data$income)
+prf <- performance(pr, measure = "tpr", x.measure = "fpr")
+#Creating a data frame for TP and FP rates
+df <- data.frame(FP = prf@x.values[[1]], TP = prf@y.values[[1]])
+#NN
+pr1 <- prediction(nn2.pred, testing_data$income)
+prf1 <- performance(pr1, measure = "tpr", x.measure = "fpr")
+df1 <- data.frame(FP = prf1@x.values[[1]], TP = prf1@y.values[[1]])
+
+#SVM
+pr2 <- prediction(svmpred_prob1, testing_data$income)
+prf2 <- performance(pr2, measure = "tpr", x.measure = "fpr")
+df2 <- data.frame(FP = prf2@x.values[[1]], TP = prf2@y.values[[1]])
+
+g <- ggplot() + 
+  geom_line(data = df, aes(x = FP, y = TP, color = 'Logistic Regression')) + 
+  geom_line(data = df1, aes(x = FP, y = TP, color = 'Neural Networks')) + 
+  geom_line(data = df2, aes(x = FP, y = TP, color = 'Support Vector Machine')) +
+  geom_segment(aes(x = 0, xend = 1, y = 0, yend = 1)) +
+  ggtitle('ROC Curve') + 
+  labs(x = 'False Positive Rate', y = 'True Positive Rate')
+g
+
+#AUC
+auc <- rbind(performance(pr, measure = 'auc')@y.values[[1]],
+             performance(pr1, measure = 'auc')@y.values[[1]],
+             performance(pr2, measure = 'auc')@y.values[[1]])
+             
+rownames(auc) <- (c('Logistic Regression', 'Neural Networks', 'Support Vector Machine'))
+colnames(auc) <- 'Area Under ROC Curve'
+round(auc, 3)
+
+#Ensemble model
+#In Random forest each tree in the ensemble is built from a sample drawn with replacement (i.e., a bootstrap sample) from the training set. In addition, when splitting a node during the construction of the tree, the split that is chosen is no longer the best split among all features. Instead, the split that is picked is the best split among a random subset of the features. As a result of this randomness, the bias of the forest usually slightly increases (with respect to the bias of a single non-random tree) but, due to averaging, its variance also decreases, usually more than compensating for the increase in bias, hence yielding an overall better model.
+set.seed(2799)
+utk <- round(0.75 * dim(adult)[1])  
+training_data <- adult[1:utk,]
+testing_data <- adult[-(1:utk),]
+library(randomForest)
+rf1 <- randomForest(income ~ ., data = training_data, ntree = 500)
+rf1pred_prob <- predict(rf1, newdata = testing_data, type = 'prob')
+rf_pred <- predict(rf1, newdata = testing_data, type = 'class')
+confusionMatrix_rf<- confusionMatrix(rf_pred,testing_data$income)
+confusionMatrix_rf
+```
+**References
+1.https://mathematicaforprediction.wordpress.com/2014/03/30/classification-%20and-association-%20rules-for-%20census-income-%20data/
+2.www.kaggle.com
+3.http://allstate-university-hackathons.github.io/PredictionChallenge2016/GBM
+4.https://rstudio-pubs-static.s3.amazonaws.com/250617_25ad457a82c941e08c9e0fa761080b5d.html
+5.https://www.knowbigdata.com/blog/predicting-income- level-analytics-
+casestudy-r
+
+Add a new chunk by clicking the *Insert Chunk* button on the toolbar or by pressing *Ctrl+Alt+I*.
+
+When you save the notebook, an HTML file containing the code and output will be saved alongside it (click the *Preview* button or press *Ctrl+Shift+K* to preview the HTML file).
+
+The preview shows you a rendered HTML copy of the contents of the editor. Consequently, unlike *Knit*, *Preview* does not run any R code chunks. Instead, the output of the chunk when it was last run in the editor is displayed.
